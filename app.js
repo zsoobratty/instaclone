@@ -6,6 +6,9 @@ const {MONGOURI} = require('./keys')
 
 require('./models/user')
 
+
+app.use(require('./routes/auth'))
+
 mongoose.connect(MONGOURI,{
     useNewUrlParser:true,
     useUnifiedTopology:true 
