@@ -18,14 +18,15 @@ router.get('/allposts',(req,res)=>{
 
 
 router.post('/createpost',requireLogin, (req,res)=> {
-    const {title, body} = req.body
-    if(!title || !body){
+    const {title, body, url} = req.body
+    if(!title || !body || !url){
         return res.status(422).json({error:"Please complete all fields"})
     }
     req.user.password = undefined
     const post = new Post({
         title,
         body,
+        photo:url,
         postedBy:req.user
     })
     post.save().then(result=>{
