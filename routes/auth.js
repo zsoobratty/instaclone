@@ -2,11 +2,21 @@ const express = require ('express')
 const router = express.Router()
 const mongoose = require('mongoose')
 const User = mongoose.model("User")
+const crypto = require('crypto')
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const {JWT_SECRET} = require('../config/keys')
+const {EMAIL} = require('../config/keys')
+const {SENDMAIL} = require('../config/keys')
 const requireLogin = require('../middleware/requireLogin')
+const nodemailer = require('nodemailer')
+const sendgridTransport = require('nodemailer-sendgrid-transport')
 
+const transporter = nodemailer.createTransport(sendgridTransport({
+    auth:{
+        api_key:SENDMAIL
+    }
+}))
 
 router.post('/signup',(req,res)=> {
     const {name,email,password,pic} = req.body
@@ -29,6 +39,12 @@ router.post('/signup',(req,res)=> {
     
             user.save()
             .then(user=>{
+                transporter.sendMail({
+                    to:user.email,
+                    from:EMAIL,
+                    subject:"Signed up successfully",
+                    html:"<h1>Welcome to Instaclone!</h1>"
+                })
                 res.json({message:"User has successfully signed up."})
             })
             .catch(err=>{
@@ -68,6 +84,56 @@ router.post('/signin',(req,res)=>{
         })
     })
     .catch(err=>{
+        console.log(err)
+    })
+})
+
+router.post('/reset-password',(req,res)=>{
+    crypto.randomBytes(32,(err,buffer)=>{
+        if(err){
+            console.log(err)
+        }
+        const token = buffer.toString("hex")
+        User.findOne({email:req.body.email})
+        .then(user=>{
+            if(!user){
+                return res.status(422).json({error:"User doesn't exist with this email"})
+            }
+            user.resetToken = token
+            user.expireToken = Date.now() + 3600000
+            user.save().then((result)=>{
+                transporter.sendMail({
+                    to:user.email,
+                    from:EMAIL,
+                    subject:"Password reset",
+                    html:`
+                    <p>You requested to reset your password</p>
+                    <h5>Click this <a href="http://localhost:3000/reset/${token}">link</a> to reset your password</h5>
+                    `
+                })
+                res.json({message:"Reset password sent to your email address"})
+            })
+        })
+    })
+})
+
+router.post('/new-password',(req,res)=>{
+    const newPassword = req.body.password
+    const sentToken = req.body.token
+    User.findOne({resetToken:sentToken,expireToken:{$gt:Date.now()}})
+    .then(user=>{
+        if(!user){
+            return res.status(422).json({error:"Try again - session expired"})
+        }
+        bcrypt.hash(newPassword,12).then(hashedPassword=>{
+            user.password = hashedPassword
+            user.resetToken = undefined
+            user.expireToken = undefined
+            user.save().then((savedUser)=>{
+                res.json({message:"Successfully reset password"})
+            })
+        })
+    }).catch(err=>{
         console.log(err)
     })
 })
